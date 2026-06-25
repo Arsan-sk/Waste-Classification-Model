@@ -3,12 +3,56 @@ WasteVision – AI Waste Segregation Classifier
 Streamlit Application
 
 Usage:
-    streamlit run app.py
+    python app.py
 """
 
 import os
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+import sys
+import subprocess
 
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress TF info/warnings
+
+# ─── Auto-launcher: run with `python app.py` ─────────────────────────────────
+if __name__ == "__main__":
+    # Check if we are running inside Streamlit runtime
+    is_streamlit = False
+    try:
+        from streamlit.runtime.scriptrunner import get_script_run_ctx
+        if get_script_run_ctx() is not None:
+            is_streamlit = True
+    except ImportError:
+        pass
+
+    if not is_streamlit:
+        PORT = 8501
+
+        # Kill any existing process on the port
+        try:
+            result = subprocess.run(
+                ["netstat", "-ano"], capture_output=True, text=True, timeout=10
+            )
+            for line in result.stdout.splitlines():
+                if f":{PORT}" in line and "LISTENING" in line:
+                    pid = line.split()[-1]
+                    if pid.isdigit() and int(pid) > 0:
+                        subprocess.run(
+                            ["taskkill", "/PID", pid, "/F"],
+                            capture_output=True, timeout=10
+                        )
+        except Exception:
+            pass
+
+        # Launch streamlit
+        cmd = [sys.executable, "-m", "streamlit", "run", __file__,
+               "--server.port", str(PORT), "--server.headless", "true"]
+        try:
+            subprocess.run(cmd)
+        except KeyboardInterrupt:
+            pass
+        sys.exit(0)
+
+# ─── Imports (only reached when streamlit runs this file) ─────────────────────
 import json
 import numpy as np
 import streamlit as st
@@ -138,7 +182,40 @@ hr { border-color: rgba(255,255,255,0.08); }
 .stButton > button:hover { opacity: 0.85; }
 
 /* ── Radio ── */
-.stRadio > label { color: rgba(255,255,255,0.7); }
+.stRadio > label { color: rgba(255,255,255,0.85) !important; }
+div[data-testid="stRadio"] label {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+div[data-testid="stRadio"] [data-testid="stMarkdownContainer"] p {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* ── File Uploader (Glassmorphism Style) ── */
+[data-testid="stFileUploaderDropzone"] {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border: 1px dashed rgba(255, 255, 255, 0.15) !important;
+    border-radius: 14px !important;
+    padding: 20px !important;
+}
+[data-testid="stFileUploaderDropzone"] * {
+    color: rgba(255, 255, 255, 0.85) !important;
+}
+[data-testid="stFileUploaderDropzone"] svg {
+    fill: rgba(255, 255, 255, 0.8) !important;
+    stroke: rgba(255, 255, 255, 0.8) !important;
+}
+[data-testid="stFileUploaderDropzone"] button {
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.18) !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    transition: all 0.2s ease !important;
+}
+[data-testid="stFileUploaderDropzone"] button:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    border-color: #43e97b !important;
+}
 
 /* ── Tab styling ── */
 .stTabs [data-baseweb="tab-list"] {
@@ -179,8 +256,7 @@ header[data-testid="stHeader"] {
 """, unsafe_allow_html=True)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
-MODEL_PATH = "models/best_trained.keras"
-MODEL_H5_PATH = "models/best_trained.h5"
+MODEL_PATH = "models/best_trained.h5"
 INFO_PATH = "model_info.json"
 IMG_SIZE = 224
 
@@ -232,13 +308,11 @@ WASTE_META = {
 # ─── Helper Functions ─────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="♻️ Loading model …")
 def load_model():
+    """Load the trained H5 model."""
     if os.path.exists(MODEL_PATH):
         return tf.keras.models.load_model(MODEL_PATH)
-    elif os.path.exists(MODEL_H5_PATH):
-        return tf.keras.models.load_model(MODEL_H5_PATH)
-    else:
-        st.error("❌ Model file not found! Please run train.py first.")
-        st.stop()
+    st.error("❌ Model file not found! Please run train.py first.")
+    st.stop()
 
 
 @st.cache_data(show_spinner=False)
@@ -559,25 +633,27 @@ with tab_model:
 
         # ── Training History Charts ──
         history = info.get("training_history", {})
-        if history.get("accuracy"):
+        if any(history.get(k) for k in ["accuracy", "val_accuracy", "loss", "val_loss"]):
             st.markdown("### 📈 Training History")
 
             col_acc, col_loss = st.columns(2, gap="large")
 
-            epochs = list(range(1, len(history["accuracy"]) + 1))
-
             with col_acc:
                 fig_acc = go.Figure()
-                fig_acc.add_trace(go.Scatter(
-                    x=epochs, y=[a * 100 for a in history["accuracy"]],
-                    mode='lines', name='Train Accuracy',
-                    line=dict(color='#4facfe', width=2.5),
-                    fill='tozeroy', fillcolor='rgba(79,172,254,0.08)',
-                ))
-                if history.get("val_accuracy"):
+                if history.get("accuracy"):
+                    y_acc = history["accuracy"]
+                    x_acc = list(range(1, len(y_acc) + 1))
                     fig_acc.add_trace(go.Scatter(
-                        x=epochs[:len(history["val_accuracy"])],
-                        y=[a * 100 for a in history["val_accuracy"]],
+                        x=x_acc, y=[a * 100 for a in y_acc],
+                        mode='lines', name='Train Accuracy',
+                        line=dict(color='#4facfe', width=2.5),
+                        fill='tozeroy', fillcolor='rgba(79,172,254,0.08)',
+                    ))
+                if history.get("val_accuracy"):
+                    y_val_acc = history["val_accuracy"]
+                    x_val_acc = list(range(1, len(y_val_acc) + 1))
+                    fig_acc.add_trace(go.Scatter(
+                        x=x_val_acc, y=[a * 100 for a in y_val_acc],
                         mode='lines', name='Val Accuracy',
                         line=dict(color='#43e97b', width=2.5),
                         fill='tozeroy', fillcolor='rgba(67,233,123,0.08)',
@@ -595,16 +671,20 @@ with tab_model:
 
             with col_loss:
                 fig_loss = go.Figure()
-                fig_loss.add_trace(go.Scatter(
-                    x=epochs, y=history["loss"],
-                    mode='lines', name='Train Loss',
-                    line=dict(color='#fa709a', width=2.5),
-                    fill='tozeroy', fillcolor='rgba(250,112,154,0.08)',
-                ))
-                if history.get("val_loss"):
+                if history.get("loss"):
+                    y_loss = history["loss"]
+                    x_loss = list(range(1, len(y_loss) + 1))
                     fig_loss.add_trace(go.Scatter(
-                        x=epochs[:len(history["val_loss"])],
-                        y=history["val_loss"],
+                        x=x_loss, y=y_loss,
+                        mode='lines', name='Train Loss',
+                        line=dict(color='#fa709a', width=2.5),
+                        fill='tozeroy', fillcolor='rgba(250,112,154,0.08)',
+                    ))
+                if history.get("val_loss"):
+                    y_val_loss = history["val_loss"]
+                    x_val_loss = list(range(1, len(y_val_loss) + 1))
+                    fig_loss.add_trace(go.Scatter(
+                        x=x_val_loss, y=y_val_loss,
                         mode='lines', name='Val Loss',
                         line=dict(color='#fda085', width=2.5),
                         fill='tozeroy', fillcolor='rgba(253,160,133,0.08)',
