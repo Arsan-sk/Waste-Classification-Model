@@ -2,5 +2,4 @@ streamlit
 tensorflow-cpu
 Pillow
 plotly
-numpy
-better-bing-image-downloader
+numpy<2.0.0
