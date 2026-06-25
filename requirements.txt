@@ -1,0 +1,6 @@
+streamlit
+tensorflow
+Pillow
+plotly
+numpy
+better-bing-image-downloader
