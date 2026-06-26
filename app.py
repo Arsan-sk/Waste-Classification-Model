@@ -256,7 +256,8 @@ header[data-testid="stHeader"] {
 """, unsafe_allow_html=True)
 
 # ─── Constants ────────────────────────────────────────────────────────────────
-MODEL_PATH = "models/best_trained.h5"
+MODEL_PATH_KERAS = "models/best_trained.keras"
+MODEL_PATH_H5 = "models/best_trained.h5"
 INFO_PATH = "model_info.json"
 IMG_SIZE = 224
 
@@ -308,9 +309,11 @@ WASTE_META = {
 # ─── Helper Functions ─────────────────────────────────────────────────────────
 @st.cache_resource(show_spinner="♻️ Loading model …")
 def load_model():
-    """Load the trained H5 model."""
-    if os.path.exists(MODEL_PATH):
-        return tf.keras.models.load_model(MODEL_PATH)
+    """Load the trained model – prefers .keras format, falls back to .h5."""
+    if os.path.exists(MODEL_PATH_KERAS):
+        return tf.keras.models.load_model(MODEL_PATH_KERAS, compile=False)
+    if os.path.exists(MODEL_PATH_H5):
+        return tf.keras.models.load_model(MODEL_PATH_H5, compile=False)
     st.error("❌ Model file not found! Please run train.py first.")
     st.stop()
 

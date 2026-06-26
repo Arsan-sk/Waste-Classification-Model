@@ -1,5 +1,5 @@
-streamlit
-tensorflow-cpu
+tensorflow-cpu==2.18.0
+numpy<2.0.0
 Pillow
 plotly
-numpy<2.0.0
+streamlit
